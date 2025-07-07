@@ -1,0 +1,20 @@
+{
+  "build": {
+    "beforeBuildCommand": "npm run build",
+    "beforeDevCommand": "npm run dev",
+    "devPath": "http://localhost:9002",
+    "distDir": "../out"
+  },
+  "tauri": {
+    "bundle": {
+      "active": true,
+      "identifier": "com.chillymovies.dev",
+      "targets": "all"
+    },
+    "windows": [
+      {
+        "title": "ChillyMovies-0.2"
+      }
+    ]
+  }
+}

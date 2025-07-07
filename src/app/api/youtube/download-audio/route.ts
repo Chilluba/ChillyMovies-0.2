@@ -1,10 +1,27 @@
 // src/app/api/youtube/download-audio/route.ts
-// This API route is removed as YouTube download functionality is being stripped for the UI template.
 import { NextRequest, NextResponse } from 'next/server';
+import ytdl from 'ytdl-core';
 
-export async function GET(request: NextRequest) {
-  console.log("[API YouTube Download Audio] Endpoint stubbed: Not active in UI Template Mode.");
-  return NextResponse.json({ 
-    message: "YouTube audio download API is stubbed and not functional in this UI template.",
-  }, { status: 501 });
+export async function POST(request: NextRequest) {
+  const { url } = await request.json();
+
+  if (!url || !ytdl.validateURL(url)) {
+    return NextResponse.json({ error: 'Invalid YouTube URL' }, { status: 400 });
+  }
+
+  try {
+    const info = await ytdl.getInfo(url);
+    const format = ytdl.chooseFormat(info.formats, { quality: 'highestaudio' });
+
+    const headers = new Headers();
+    headers.set('Content-Disposition', `attachment; filename="${info.videoDetails.title}.mp3"`);
+    headers.set('Content-Type', 'audio/mpeg');
+
+    const stream = ytdl(url, { format });
+
+    return new NextResponse(stream as any, { headers });
+  } catch (error) {
+    console.error(error);
+    return NextResponse.json({ error: 'Failed to download audio' }, { status: 500 });
+  }
 }

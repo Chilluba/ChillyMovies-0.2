@@ -1,100 +1,39 @@
 // src/lib/webtorrent-service.ts
-// This file is effectively stubbed out as active WebTorrent functionality is removed for the UI template.
-// You can re-implement client-side WebTorrent logic here if needed in the future.
+import type WebTorrent from 'webtorrent';
+import { Buffer } from 'buffer';
 
-import { Buffer } from 'buffer'; 
-
-// Polyfills - kept for potential future use if client-side JS needs them, but not critical for UI template
 if (typeof window !== 'undefined') {
   if (typeof (window as any).Buffer === 'undefined') {
     (window as any).Buffer = Buffer;
   }
-  if (typeof (window as any).process === 'undefined') {
-    (window as any).process = {};
-  }
-  const gProcess = (window as any).process;
-  if (typeof gProcess.env === 'undefined') gProcess.env = {};
-  if (typeof gProcess.env.DEBUG === 'undefined') gProcess.env.DEBUG = undefined;
-  if (typeof gProcess.browser === 'undefined') gProcess.browser = true;
-  if (typeof gProcess.version === 'undefined') gProcess.version = 'v0.0.0';
-  if (typeof gProcess.versions === 'undefined') gProcess.versions = { node: '0.0.0' };
-  if (typeof gProcess.nextTick === 'undefined') {
-    gProcess.nextTick = (callback: (...args: any[]) => void, ...args: any[]) => {
-      const currentArgs = args.slice();
-      setTimeout(() => callback.apply(null, currentArgs), 0);
-    };
-  }
-  if (typeof (window as any).global === 'undefined') {
-    (window as any).global = window;
-  }
-   if (typeof (window as any).common === 'undefined') {
-    (window as any).common = {
-        WEBRTC_SUPPORT: true, 
-        globals: {}, 
-    };
-  }
-   if (typeof (window as any).os === 'undefined') {
-    (window as any).os = {
-      EOL: '\n',
-      platform: function () { return 'browser'; },
-      release: function () { return typeof navigator !== 'undefined' ? navigator.userAgent : 'unknown'; },
-      tmpdir: function () { return '/tmp'; },
-      homedir: function () { return '/'; },
-      cpus: function () { return []; },
-      arch: function () { return typeof navigator !== 'undefined' ? navigator.platform : 'unknown'; },
-      networkInterfaces: function () { return {}; }, 
-    };
-  }
-   if (typeof (window as any).ConnPool === 'undefined') {
-    (window as any).ConnPool = class ConnPool {};
-  }
 }
 
+export interface TorrentFile {
+  name: string;
+  length: number;
+  path: string;
+  createReadStream(opts?: any): any;
+}
 
-// Actual WebTorrent import can be removed if no client-side logic remains
-// import ActualWebTorrent from 'webtorrent';
-// import type { Instance as WebTorrentInstance, Torrent as WebTorrentAPITorrent, TorrentFile as WebTorrentAPITorrentFile } from 'webtorrent';
-
-
-// Keep type exports if other UI components (like DownloadsPage stub) still reference them.
-// Otherwise, these can be removed or simplified.
-export interface TorrentFile {/* Stubbed */}
-export interface Torrent { /* Stubbed */
+export interface Torrent extends WebTorrent.Torrent {
   customName?: string;
   addedDate?: Date;
   itemId?: string | number;
-  infoHash?: string;
-  magnetURI?: string;
-  name?: string;
-  length?: number;
-  progress?: number;
-  downloadSpeed?: number;
-  uploadSpeed?: number;
-  numPeers?: number;
-  timeRemaining?: number;
-  downloaded?: number;
-  done?: boolean;
-  paused?: boolean;
-  ready?: boolean;
-  statusForHistory?: HistoryItem['status'];
-  lastProgressTime?: number;
-  noPeersReason?: string;
 }
 
-export type TorrentProgressStatus = 
-  | 'idle' 
-  | 'downloading' 
-  | 'seeding' 
-  | 'paused' 
-  | 'error' 
-  | 'connecting' 
-  | 'done' 
-  | 'metadata' 
-  | 'stalled'
-  | 'no_peers';
+export type TorrentProgressStatus =
+  | 'idle'
+  | 'downloading'
+  | 'seeding'
+  | 'paused'
+  | 'error'
+  | 'connecting'
+  | 'done'
+  | 'metadata'
+  | 'stalled';
 
 export type TorrentProgress = {
-  torrentId: string; 
+  torrentId: string;
   progress: number;
   downloadSpeed: number;
   uploadSpeed: number;
@@ -106,7 +45,6 @@ export type TorrentProgress = {
   addedDate?: Date;
   itemId?: string | number;
   status: TorrentProgressStatus;
-  noPeersReason?: string; 
 };
 
 export interface HistoryItem {
@@ -116,78 +54,136 @@ export interface HistoryItem {
   itemId?: string | number;
   addedDate: string;
   completedDate?: string;
-  status: 'completed' | 'failed' | 'removed' | 'active' | 'error' | 'stalled';
+  status: 'completed' | 'failed' | 'removed';
   size?: number;
-  lastError?: string;
 }
 
-// const HISTORY_STORAGE_KEY = 'chillymovies_download_history_v2'; // Not used if stubbed
+const HISTORY_STORAGE_KEY = 'chillymovies_download_history';
 
-class WebTorrentServiceStub {
-  constructor() {
-    console.log("[WebTorrentService] Stubbed: Not active in UI Template Mode.");
+class WebTorrentService {
+  private client: WebTorrent.Instance | null = null;
+  private static instance: WebTorrentService;
+
+  private constructor() {
+    if (typeof window !== 'undefined') {
+      import('webtorrent').then(WebTorrent => {
+        this.client = new WebTorrent.default();
+      });
+    }
   }
 
-  public async getClient(): Promise<null> { // Returns null as there's no active client
-    console.log("[WebTorrentService] getClient() called - returning null (Stubbed).");
-    return null;
+  public static getInstance(): WebTorrentService {
+    if (!WebTorrentService.instance) {
+      WebTorrentService.instance = new WebTorrentService();
+    }
+    return WebTorrentService.instance;
+  }
+
+  public getClient(): WebTorrent.Instance | null {
+    return this.client;
+  }
+
+  public addTorrent(magnetURI: string, itemName?: string, itemId?: string | number): Promise<Torrent> {
+    return new Promise((resolve, reject) => {
+      if (!this.client) {
+        return reject(new Error('WebTorrent client is not initialized.'));
+      }
+      if (this.client.get(magnetURI)) {
+        return reject(new Error('Torrent already added.'));
+      }
+
+      const torrent = this.client.add(magnetURI, (torrent: WebTorrent.Torrent) => {
+        const extendedTorrent = torrent as Torrent;
+        extendedTorrent.customName = itemName;
+        extendedTorrent.itemId = itemId;
+        extendedTorrent.addedDate = new Date();
+        this.updateHistory(extendedTorrent, 'active');
+        resolve(extendedTorrent);
+      }) as Torrent;
+
+      torrent.on('error', (err) => {
+        this.updateHistory(torrent, 'failed');
+        reject(err);
+      });
+
+      torrent.on('done', () => {
+        this.updateHistory(torrent, 'completed');
+      });
+    });
+  }
+
+  public removeTorrent(infoHashOrMagnetURI: string) {
+    const torrent = this.client?.get(infoHashOrMagnetURI) as Torrent;
+    if (torrent) {
+      this.updateHistory(torrent, 'removed');
+      torrent.destroy();
+    }
+  }
+
+  public pauseTorrent(infoHashOrMagnetURI: string) {
+    const torrent = this.client?.get(infoHashOrMagnetURI) as Torrent;
+    if (torrent) {
+      torrent.pause();
+    }
+  }
+
+  public resumeTorrent(infoHashOrMagnetURI: string) {
+    const torrent = this.client?.get(infoHashOrMagnetURI) as Torrent;
+    if (torrent) {
+      torrent.resume();
+    }
+  }
+
+  public getTorrent(infoHashOrMagnetURI: string): Torrent | undefined {
+    return this.client?.get(infoHashOrMagnetURI) as Torrent;
+  }
+
+  public getTorrents(): Torrent[] {
+    return this.client?.torrents as Torrent[] || [];
   }
 
   public getDownloadHistory(): HistoryItem[] {
-    console.log("[WebTorrentService] getDownloadHistory() called - returning empty array (Stubbed).");
-    return [];
+    if (typeof window === 'undefined') return [];
+    const history = localStorage.getItem(HISTORY_STORAGE_KEY);
+    return history ? JSON.parse(history) : [];
   }
 
-  public clearHistory(): void {
-    console.log("[WebTorrentService] clearHistory() called (Stubbed).");
+  private updateHistory(torrent: Torrent, status: HistoryItem['status']) {
+    if (typeof window === 'undefined') return;
+    const history = this.getDownloadHistory();
+    const existingIndex = history.findIndex(item => item.infoHash === torrent.infoHash);
+
+    if (existingIndex > -1) {
+      history[existingIndex].status = status;
+      if (status === 'completed') {
+        history[existingIndex].completedDate = new Date().toISOString();
+      }
+    } else {
+      history.push({
+        infoHash: torrent.infoHash,
+        magnetURI: torrent.magnetURI,
+        name: torrent.customName || torrent.name,
+        itemId: torrent.itemId,
+        addedDate: (torrent.addedDate || new Date()).toISOString(),
+        status,
+        size: torrent.length,
+      });
+    }
+    localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(history));
   }
 
-  public removeFromHistory(infoHash: string): void {
-    console.log(`[WebTorrentService] removeFromHistory(${infoHash}) called (Stubbed).`);
-  }
+  public getLargestFileForStreaming(infoHashOrMagnetURI: string): Promise<{ file: TorrentFile; streamUrl: string } | null> {
+    return new Promise((resolve) => {
+      const torrent = this.getTorrent(infoHashOrMagnetURI);
+      if (!torrent) {
+        return resolve(null);
+      }
 
-  async addTorrent(magnetURI: string, itemName?: string, itemId?: string | number): Promise<null> {
-    console.log(`[WebTorrentService] addTorrent for "${itemName || magnetURI}" called - returning null (Stubbed).`);
-    return null;
+      const file = torrent.files.reduce((a, b) => (a.length > b.length ? a : b));
+      const streamUrl = `http://localhost:8000/${torrent.infoHash}/${file.path}`;
+      resolve({ file: file as TorrentFile, streamUrl });
+    });
   }
-  
-  getAllTorrentsProgress(): TorrentProgress[] {
-    console.log("[WebTorrentService] getAllTorrentsProgress() called - returning empty array (Stubbed).");
-    return [];
-  }
-
-  async removeTorrent(infoHashOrMagnetURI: string): Promise<void> {
-    console.log(`[WebTorrentService] removeTorrent(${infoHashOrMagnetURI}) called (Stubbed).`);
-  }
-
-  pauseTorrent(infoHashOrMagnetURI: string): void {
-    console.log(`[WebTorrentService] pauseTorrent(${infoHashOrMagnetURI}) called (Stubbed).`);
-  }
-
-  resumeTorrent(infoHashOrMagnetURI: string): void {
-    console.log(`[WebTorrentService] resumeTorrent(${infoHashOrMagnetURI}) called (Stubbed).`);
-  }
-  
-  getTorrent(infoHashOrMagnetURI: string): undefined { // Always undefined for stub
-    console.log(`[WebTorrentService] getTorrent(${infoHashOrMagnetURI}) called - returning undefined (Stubbed).`);
-    return undefined;
-  }
-
-  async getLargestFileForStreaming(infoHashOrMagnetURI: string): Promise<null> {
-     console.log(`[WebTorrentService] getLargestFileForStreaming(${infoHashOrMagnetURI}) called - returning null (Stubbed).`);
-    return null;
-  }
-
-  // Listener stubs - they return empty unsubscribe functions
-  onTorrentProgress(listener: (progress: TorrentProgress) => void): () => void { return () => {}; }
-  onTorrentAdded(listener: (torrent: Torrent) => void): () => void { return () => {}; }
-  onTorrentRemoved(listener: (infoHash: string) => void): () => void { return () => {}; }
-  onTorrentDone(listener: (torrent: Torrent) => void): () => void { return () => {}; }
-  onTorrentError(listener: (torrent: Partial<Torrent> | null, error: Error | string) => void): () => void { return () => {}; }
-  onHistoryUpdated(listener: () => void): () => void { return () => {}; }
 }
 
-const webTorrentServiceStub = new WebTorrentServiceStub();
-export default webTorrentServiceStub;
-
-// export {}; // Keep if needed for module augmentation, otherwise can remove
+export default WebTorrentService.getInstance();

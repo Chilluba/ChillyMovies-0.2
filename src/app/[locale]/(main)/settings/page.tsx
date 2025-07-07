@@ -24,6 +24,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import type { Locale } from '@/config/i18n.config';
 import { getDictionary } from '@/lib/getDictionary'; 
 import { Loader2Icon } from "lucide-react";
+import { useWebTorrent } from "@/contexts/WebTorrentContext";
 
 
 interface PrimaryAccentColorOption {
@@ -164,11 +165,13 @@ export default function SettingsPage(props: SettingsPageProps) {
     });
   };
 
+  const { clearDownloadHistory } = useWebTorrent();
+
   const handleClearPlaybackHistory = () => { 
-    localStorage.removeItem("chillymovies-playback-history"); 
+    clearDownloadHistory();
     toast({
       title: dictionary?.toastHistoryClearedTitle || "Playback History Cleared",
-      description: dictionary?.toastHistoryClearedDesc || "Your playback history has been successfully cleared (once implemented).",
+      description: dictionary?.toastHistoryClearedDesc || "Your playback history has been successfully cleared.",
     });
   };
 
@@ -276,13 +279,13 @@ export default function SettingsPage(props: SettingsPageProps) {
                     {downloadLocation}
                 </div>
             </div>
-            <Button onClick={handleChangeDownloadLocation} variant="outline" className="w-full sm:w-auto">
+            <Button onClick={handleChangeDownloadLocation} variant="outline" className="w-full sm:w-auto" disabled>
                 <FolderOpenIcon className="mr-2 h-4 w-4"/>
                 {dictionary.downloadLocation.changeLocationButton}
             </Button>
              <div className="flex items-start p-3 rounded-md bg-muted/50 border border-dashed border-border">
                 <InfoIcon className="h-5 w-5 text-muted-foreground mr-3 mt-0.5 flex-shrink-0" />
-                <p className="text-sm text-muted-foreground">{dictionary.downloadLocation.note}</p>
+                <p className="text-sm text-muted-foreground">{dictionary.downloadLocation.note} (This feature is enabled in the desktop app.)</p>
             </div>
         </CardContent>
       </Card>

@@ -1,12 +1,23 @@
 // src/app/api/youtube/video-info/route.ts
-// This API route is removed as YouTube download functionality is being stripped for the UI template.
-// If you re-implement YouTube downloads, you can recreate this file.
 import { NextRequest, NextResponse } from 'next/server';
+import ytdl from 'ytdl-core';
 
-export async function GET(request: NextRequest) {
-  console.log("[API YouTube Video Info] Endpoint stubbed: Not active in UI Template Mode.");
-  return NextResponse.json({ 
-    message: "YouTube video info API is stubbed and not functional in this UI template.",
-    note: "To implement, you would use a library like ytdl-core here." 
-  }, { status: 501 }); // 501 Not Implemented
+export async function POST(request: NextRequest) {
+  const { url } = await request.json();
+
+  if (!url || !ytdl.validateURL(url)) {
+    return NextResponse.json({ error: 'Invalid YouTube URL' }, { status: 400 });
+  }
+
+  try {
+    const info = await ytdl.getInfo(url);
+    return NextResponse.json({
+      title: info.videoDetails.title,
+      thumbnail: info.videoDetails.thumbnails[0].url,
+      formats: info.formats,
+    });
+  } catch (error) {
+    console.error(error);
+    return NextResponse.json({ error: 'Failed to get video info' }, { status: 500 });
+  }
 }

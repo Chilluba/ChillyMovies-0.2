@@ -4,35 +4,22 @@
 import { useState, useEffect } from "react";
 import type { TMDBMovie } from "@/types/tmdb";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
-import { DownloadIcon, ExternalLinkIcon, Loader2Icon, ServerIcon } from "lucide-react";
+import { DownloadIcon, ExternalLinkIcon, Loader2Icon } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
 import { getFullImagePath } from "@/lib/tmdb";
 import { useWebTorrent } from "@/contexts/WebTorrentContext";
 import { useToast } from "@/hooks/use-toast";
-import type { ConceptualAria2Task } from "@/types/download";
 
 interface MovieDownloadCardProps {
   movie: TMDBMovie & { magnetLink?: string; torrentQuality?: string }; 
 }
 
-const qualities = ["1080p (FHD)", "720p (HD)", "Any Available"]; 
-
 export function MovieDownloadCard({ movie }: MovieDownloadCardProps) {
   const { toast } = useToast();
   const { addTorrent, isClientReady } = useWebTorrent();
-  const [selectedQuality, setSelectedQuality] = useState(movie.torrentQuality || qualities[0]); 
   const [isWebTorrentLoading, setIsWebTorrentLoading] = useState(false);
-  const [isAria2Loading, setIsAria2Loading] = useState(false);
-
-  useEffect(() => {
-    if (movie.torrentQuality) {
-      setSelectedQuality(movie.torrentQuality);
-    }
-  }, [movie.torrentQuality]);
-
 
   const handleWebTorrentDownload = async () => {
     if (!isClientReady) {
@@ -61,62 +48,6 @@ export function MovieDownloadCard({ movie }: MovieDownloadCardProps) {
     }
   };
 
-  const handleAria2Download = async () => {
-    setIsAria2Loading(true);
-    console.log(`[MovieDownloadCard] Initiating Aria2 download for ${movie.title} (Quality: ${selectedQuality})`);
-    
-    if (!movie.magnetLink && !movie.imdb_id) {
-        toast({ title: "Server Download Unavailable", description: "No identifier for server download.", variant: "destructive"});
-        setIsAria2Loading(false);
-        return;
-    }
-
-    const identifier = movie.magnetLink || movie.imdb_id!;
-    const type = movie.magnetLink ? 'magnet' : 'imdb_id';
-
-    try {
-        const response = await fetch('/api/aria2/add', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ identifier, type, name: movie.title, quality: selectedQuality })
-        });
-        const result = await response.json();
-
-        if (response.ok && result.taskId) {
-            toast({ 
-                title: "Sent to Server Download", 
-                description: `${movie.title} (${selectedQuality}) sent to server. Task ID: ${result.taskId}. Check Downloads page.` 
-            });
-            
-            const conceptualTasksString = localStorage.getItem('chillymovies-aria2-tasks');
-            const conceptualTasks: ConceptualAria2Task[] = conceptualTasksString ? JSON.parse(conceptualTasksString) : [];
-            
-            const newTask: ConceptualAria2Task = {
-                taskId: result.taskId,
-                name: result.taskName || movie.title,
-                quality: selectedQuality,
-                addedTime: Date.now(),
-                sourceUrlOrIdentifier: identifier,
-                type: type,
-            };
-            
-            if (!conceptualTasks.find(task => task.taskId === result.taskId)) {
-                conceptualTasks.push(newTask);
-                localStorage.setItem('chillymovies-aria2-tasks', JSON.stringify(conceptualTasks));
-            }
-
-        } else {
-            toast({ title: "Server Download Error", description: result.error || "Failed to start server download.", variant: "destructive" });
-        }
-    } catch (error) {
-        console.error("[MovieDownloadCard] Error calling Aria2 add API:", error);
-        toast({ title: "Server API Error", description: "Could not communicate with download server.", variant: "destructive" });
-    } finally {
-        setIsAria2Loading(false);
-    }
-  };
-
-
   return (
     <Card className="overflow-hidden shadow-xl sticky top-24">
       <div className="aspect-[2/3] relative w-full bg-muted">
@@ -143,32 +74,8 @@ export function MovieDownloadCard({ movie }: MovieDownloadCardProps) {
             disabled={isWebTorrentLoading || !movie.magnetLink || !isClientReady}
           >
             {isWebTorrentLoading ? <Loader2Icon className="animate-spin h-5 w-5" /> : <DownloadIcon className="h-5 w-5" />}
-            <span className="ml-2">{isClientReady ? 'Download (WebTorrent)' : 'WebTorrent Loading...'}</span>
+            <span className="ml-2">{isClientReady ? 'Download' : 'WebTorrent Loading...'}</span>
           </Button>
-        </div>
-        
-        <div className="space-y-2 pt-2 border-t border-border/30">
-            <h4 className="text-sm font-medium text-muted-foreground">Server Download</h4>
-             <Select value={selectedQuality} onValueChange={setSelectedQuality} disabled={isAria2Loading}>
-                <SelectTrigger className="w-full h-10 text-xs">
-                  <SelectValue placeholder="Select quality" />
-                </SelectTrigger>
-                <SelectContent>
-                  {qualities.map(quality => (
-                    <SelectItem key={quality} value={quality} className="text-xs">{quality}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            <Button
-                size="lg"
-                variant="secondary"
-                className="w-full h-11 text-sm"
-                onClick={handleAria2Download}
-                disabled={isAria2Loading}
-            >
-                {isAria2Loading ? <Loader2Icon className="animate-spin h-5 w-5" /> : <ServerIcon className="h-5 w-5" />}
-                <span className="ml-2">Download (Server)</span>
-            </Button>
         </div>
 
         {movie.homepage && (

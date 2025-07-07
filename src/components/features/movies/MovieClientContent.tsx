@@ -8,11 +8,12 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { PlayCircleIcon, PlayIcon, Loader2Icon } from "lucide-react";
 import { getFullImagePath } from "@/lib/tmdb";
 import { useState } from "react";
-// import { VideoPlayer } from "@/components/features/streaming/VideoPlayer"; // Keep if you want player UI, but stub source
+import { VideoPlayer } from "@/components/features/streaming/VideoPlayer";
 import { useToast } from "@/hooks/use-toast";
+import { useWebTorrent } from "@/contexts/WebTorrentContext";
 
 interface MovieClientContentProps {
-  movie: TMDBMovie;
+  movie: TMDBMovie & { magnetLink?: string };
   trailerKey: string | null;
   children: React.ReactNode;
   dictionary: any; 
@@ -21,9 +22,10 @@ interface MovieClientContentProps {
 
 export function MovieClientContent({ movie, trailerKey, children, dictionary, locale }: MovieClientContentProps) {
   const { toast } = useToast();
+  const { addTorrent, getLargestFileForStreaming } = useWebTorrent();
   const [isTrailerModalOpen, setIsTrailerModalOpen] = useState(false);
   const [isPlayerModalOpen, setIsPlayerModalOpen] = useState(false);
-  // const [streamUrl, setStreamUrl] = useState<string | null>(null); // Stubbed
+  const [streamUrl, setStreamUrl] = useState<string | null>(null);
   const [streamTitle, setStreamTitle] = useState<string>("");
   const [isPlayLoading, setIsPlayLoading] = useState(false);
 
@@ -42,15 +44,27 @@ export function MovieClientContent({ movie, trailerKey, children, dictionary, lo
   const handlePlayMovie = async () => {
     setIsPlayLoading(true);
     setStreamTitle(movie.title);
-    console.log(`[MovieClientContent] "Play Movie" clicked for: ${movie.title}. Backend call stubbed.`);
-    toast({
-      title: "Playback (Stubbed)",
-      description: `Playing "${movie.title}". Feature to be fully implemented.`,
-    });
-    // Simulate a delay then open modal with placeholder
-    // setStreamUrl("placeholder_stream_url"); // Or keep null and let VideoPlayer handle it
-    setIsPlayerModalOpen(true); 
-    setTimeout(() => setIsPlayLoading(false), 1500);
+
+    if (!movie.magnetLink) {
+      toast({ title: "Playback Not Available", description: "No streaming link found for this movie.", variant: "destructive" });
+      setIsPlayLoading(false);
+      return;
+    }
+
+    try {
+      await addTorrent(movie.magnetLink, movie.title, movie.id);
+      const streamData = await getLargestFileForStreaming(movie.magnetLink);
+      if (streamData) {
+        setStreamUrl(streamData.streamUrl);
+        setIsPlayerModalOpen(true);
+      } else {
+        toast({ title: "Playback Error", description: "Could not get streaming information.", variant: "destructive" });
+      }
+    } catch (error) {
+      toast({ title: "Playback Error", description: "Could not start streaming.", variant: "destructive" });
+    } finally {
+      setIsPlayLoading(false);
+    }
   };
 
 
@@ -81,7 +95,7 @@ export function MovieClientContent({ movie, trailerKey, children, dictionary, lo
               size="lg"
               className="h-12 px-6 sm:h-14 sm:px-8 text-base sm:text-lg group/button"
               onClick={handlePlayMovie}
-              disabled={isPlayLoading || !movie.id} 
+              disabled={isPlayLoading || !movie.magnetLink} 
             >
               {isPlayLoading ? <Loader2Icon className="animate-spin h-5 w-5" /> : <PlayIcon className="h-5 w-5" />}
               <span className="ml-2">{dictionary?.playMovieButton || "Play Movie"}</span>
@@ -122,11 +136,7 @@ export function MovieClientContent({ movie, trailerKey, children, dictionary, lo
       <Dialog open={isPlayerModalOpen} onOpenChange={setIsPlayerModalOpen}>
         <DialogContent className="sm:max-w-[90vw] md:max-w-[85vw] lg:max-w-[80vw] xl:max-w-[75vw] p-0 border-0 bg-black/95 backdrop-blur-md aspect-video rounded-lg overflow-hidden">
           <DialogTitle className="sr-only">{streamTitle || (dictionary?.streamingVideoTitle || "Streaming Video")}</DialogTitle>
-          {/* VideoPlayer can show a "No source" message or be hidden if streamUrl is null */}
-          {/* <VideoPlayer src={streamUrl!} title={streamTitle || movie.title} /> */}
-           <div className="w-full h-full flex items-center justify-center bg-black text-white">
-             {isPlayLoading ? <Loader2Icon className="h-12 w-12 animate-spin" /> : (streamTitle ? `Video Player for: ${streamTitle} (Stubbed)` : "Video Player (Stubbed)")}
-           </div>
+          {streamUrl && <VideoPlayer src={streamUrl} title={streamTitle || movie.title} />}
         </DialogContent>
       </Dialog>
 

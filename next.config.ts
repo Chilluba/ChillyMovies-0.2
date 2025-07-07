@@ -24,6 +24,14 @@ const nextConfig: NextConfig = {
       }
     ],
   },
+  webpack: (config, { isServer }) => {
+    if (!isServer) {
+      config.externals.push({
+        'bittorrent-tracker': 'bittorrent-tracker',
+      });
+    }
+    return config;
+  },
 };
 
 export default nextConfig;

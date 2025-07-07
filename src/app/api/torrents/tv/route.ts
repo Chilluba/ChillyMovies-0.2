@@ -1,10 +1,9 @@
+// src/app/api/torrents/tv/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import TorrentSearchApi from 'torrent-search-api';
+import Parser from 'rss-parser';
 
-// Enable torrent providers
-TorrentSearchApi.enableProvider('1337x');
-TorrentSearchApi.enableProvider('ThePirateBay');
-// TorrentSearchApi.enableProvider('TorrentGalaxy'); // Consider adding more if needed and if reliable
+const parser = new Parser();
+const EZTV_RSS_URL = 'https://eztv.re/ezrss.xml';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -13,40 +12,28 @@ export async function GET(request: NextRequest) {
   const episode = searchParams.get('episode');
 
   if (!title || !season || !episode) {
-    console.warn('[API /torrents/tv] Missing required query parameters:', { title, season, episode });
-    return NextResponse.json({ error: 'Missing required query parameters: title, season, episode' }, { status: 400 });
+    return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 });
   }
 
-  const query = `${title} S${String(season).padStart(2, '0')}E${String(episode).padStart(2, '0')}`;
-  console.log(`[API /torrents/tv] Searching for torrent: "${query}"`);
-
   try {
-    // Search 'All' categories and get more results to pick the best one
-    const results = await TorrentSearchApi.search(query, 'All', 10); // Category 'All', limit 10
-    console.log(`[API /torrents/tv] Found ${results.length} raw results for "${query}". First 5:`, results.slice(0,5).map(r => ({ title: r.title, seeds: r.seeds, magnet: !!r.magnet, provider: r.provider })));
+    const feed = await parser.parseURL(EZTV_RSS_URL);
+    const seasonNum = parseInt(season, 10);
+    const episodeNum = parseInt(episode, 10);
 
-    if (results && results.length > 0) {
-      // Filter out results without magnet links and sort by seeders (descending)
-      const validResults = results
-        .filter(torrent => torrent.magnet && torrent.seeds && torrent.seeds > 0) // Ensure magnet and some seeders
-        .sort((a, b) => (b.seeds || 0) - (a.seeds || 0));
+    const episodeRegex = new RegExp(
+      `${title.replace(/ /g, '.')}.*S${String(seasonNum).padStart(2, '0')}E${String(episodeNum).padStart(2, '0')}`,
+      'i'
+    );
 
-      if (validResults.length > 0) {
-        const bestTorrent = validResults[0];
-        console.log(`[API /torrents/tv] Best torrent selected for "${query}": ${bestTorrent.title} (Provider: ${bestTorrent.provider}, Seeders: ${bestTorrent.seeds})`);
-        return NextResponse.json({ magnet: bestTorrent.magnet });
-      } else {
-        console.warn(`[API /torrents/tv] No valid torrents with magnet links and seeders found for: "${query}" after filtering.`);
-        return NextResponse.json({ error: 'No suitable torrents found' }, { status: 404 });
-      }
+    const entry = feed.items.find(item => episodeRegex.test(item.title || ''));
+
+    if (entry && entry.enclosure && entry.enclosure.url) {
+      return NextResponse.json({ magnet: entry.enclosure.url });
     } else {
-      console.warn(`[API /torrents/tv] No torrents returned by search API for: "${query}".`);
-      return NextResponse.json({ error: 'No torrents found' }, { status: 404 });
+      return NextResponse.json({ error: 'Magnet link not found' }, { status: 404 });
     }
   } catch (error) {
-    console.error(`[API /torrents/tv] Error searching for torrents for query "${query}":`, error);
-    // Check if error is an object and has a message property
-    const errorMessage = (error instanceof Error) ? error.message : String(error);
-    return NextResponse.json({ error: `Error searching for torrents: ${errorMessage}` }, { status: 500 });
+    console.error(error);
+    return NextResponse.json({ error: 'Failed to fetch or parse RSS feed' }, { status: 500 });
   }
 }

@@ -1,9 +1,50 @@
 // src/server/webtorrentManager.ts
-// This file's content is removed as the backend torrent management is being stripped for the UI template.
-// If you re-implement backend torrent processing, you can recreate this file.
+import WebTorrent from 'webtorrent';
+import path from 'path';
+import fs from 'fs';
 
-console.log("[WebTorrentManager] Stubbed: This manager is not active in UI Template Mode.");
+const DOWNLOAD_PATH = process.env.DOWNLOAD_BASE_PATH || './chillymovies_downloads';
 
-// Export an empty object or specific types if other server files still try to import from it.
-// For a clean template, ideally, no other server files should depend on this.
-export default {};
+if (!fs.existsSync(DOWNLOAD_PATH)) {
+  fs.mkdirSync(DOWNLOAD_PATH, { recursive: true });
+}
+
+class WebTorrentManager {
+  private client: WebTorrent.Instance;
+
+  constructor() {
+    this.client = new WebTorrent();
+  }
+
+  addTorrent(torrentId: string, onProgress?: (progress: number) => void) {
+    console.log(`Adding torrent: ${torrentId}`);
+    this.client.add(torrentId, { path: DOWNLOAD_PATH }, (torrent) => {
+      console.log(`Torrent added: ${torrent.infoHash}`);
+
+      torrent.on('download', (bytes) => {
+        if (onProgress) {
+          onProgress(torrent.progress);
+        }
+      });
+
+      torrent.on('done', () => {
+        console.log(`Torrent download finished: ${torrent.name}`);
+      });
+
+      torrent.on('error', (err) => {
+        console.error(`Torrent error: ${err}`);
+      });
+    });
+  }
+
+  getTorrent(torrentId: string) {
+    return this.client.get(torrentId);
+  }
+
+  getTorrents() {
+    return this.client.torrents;
+  }
+}
+
+const webTorrentManager = new WebTorrentManager();
+export default webTorrentManager;

@@ -167,60 +167,73 @@ export default function YouTubeDownloaderPage(props: YouTubeDownloaderPageProps)
 
   const onSearch = async (data: YouTubeUrlFormValues) => {
     setIsLoadingInfo(true);
-    setCurrentContent(null); 
+    setCurrentContent(null);
     setPreviewVideoId(null);
-    console.log(`[YouTubeDownloader] "Fetch Info" for URL: ${data.url}. API call stubbed.`);
 
-    // STUB: Simulate API call and response for UI template
-    setTimeout(() => {
+    try {
       const { videoId, playlistId } = getYouTubeId(data.url);
+
       if (playlistId) {
-        // Mock playlist data
-        const mockPlaylistItems: PlaylistItem[] = Array.from({ length: 5 }).map((_, i) => ({
-          id: `mock_video_id_${i+1}`,
-          title: `Mock Playlist Video ${i+1} - ${playlistId}`,
-          thumbnail: `https://placehold.co/320x180.png?text=Video+${i+1}`,
-          duration: `${120 + i * 30}`,
-          author: "Mock Author",
-          videoFormats: [{ quality: "720p", itag: 22, container: "mp4", fps: 30, hasVideo: true, hasAudio: true }],
-          audioFormats: [{ quality: "128kbps", itag: 140, container: "m4a", hasAudio: true, hasVideo: false }],
-          selected: true,
-        }));
-        setCurrentContent({
-          title: `Mock Playlist ${playlistId}`,
-          author: "Mock Playlist Author",
-          itemCount: mockPlaylistItems.length,
-          items: mockPlaylistItems,
+        const response = await fetch('/api/youtube/playlist-info', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: data.url }),
         });
-        setPlaylistItemsSelection(mockPlaylistItems.reduce((acc: Record<string, boolean>, item: PlaylistItem) => {
-            acc[item.id] = true; 
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Failed to fetch playlist info');
+        }
+
+        const playlistInfo = await response.json();
+        setCurrentContent({
+          title: playlistInfo.title,
+          author: playlistInfo.author,
+          itemCount: playlistInfo.itemCount,
+          items: playlistInfo.items,
+        });
+        setPlaylistItemsSelection(playlistInfo.items.reduce((acc: Record<string, boolean>, item: PlaylistItem) => {
+            acc[item.id] = true;
             return acc;
           }, {}));
+
       } else if (videoId) {
+        const response = await fetch('/api/youtube/video-info', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: data.url }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Failed to fetch video info');
+        }
+
+        const videoInfo = await response.json();
         setPreviewVideoId(videoId);
         setCurrentContent({
           id: videoId,
-          title: `Mock Video: ${videoId}`,
-          thumbnail: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
-          duration: "180",
-          author: "Mock Video Author",
-          videoFormats: [
-            { quality: "1080p", itag: 137, container: "mp4", fps: 30, hasVideo: true, hasAudio: false},
-            { quality: "720p", itag: 22, container: "mp4", fps: 30, hasVideo: true, hasAudio: true },
-            { quality: "480p", itag: 135, container: "mp4", fps: 30, hasVideo: true, hasAudio: false },
-          ],
-          audioFormats: [
-            { quality: "128kbps", itag: 140, container: "m4a", audioBitrate: 128, hasAudio: true, hasVideo: false },
-            { quality: "256kbps", itag: 141, container: "m4a", audioBitrate: 256, hasAudio: true, hasVideo: false },
-          ],
+          title: videoInfo.title,
+          thumbnail: videoInfo.thumbnail,
+          duration: "0",
+          author: "Unknown",
+          videoFormats: videoInfo.formats.filter((f: any) => f.hasVideo),
+          audioFormats: videoInfo.formats.filter((f: any) => f.hasAudio && !f.hasVideo),
         });
-        setSelectedVideoItag("22"); // Default to a video+audio format
-        setSelectedAudioItag("140");
-      } else {
-        toast({ title: dictionary?.errorInvalidUrlTitle || "Invalid URL", description: dictionary?.errorInvalidUrlDesc || "Could not identify a video or playlist ID.", variant: "destructive" });
+        const defaultVideo = videoInfo.formats.find((f:any) => f.hasVideo && f.hasAudio);
+        if(defaultVideo) {
+          setSelectedVideoItag(defaultVideo.itag.toString());
+        }
+        const defaultAudio = videoInfo.formats.find((f:any) => f.hasAudio && !f.hasVideo);
+        if(defaultAudio) {
+          setSelectedAudioItag(defaultAudio.itag.toString());
+        }
       }
+    } catch (error) {
+      toast({ title: "Error", description: (error as Error).message, variant: "destructive" });
+    } finally {
       setIsLoadingInfo(false);
-    }, 1500);
+    }
   };
   
   const handleDownload = async (videoToDownload?: VideoInfo) => {
@@ -232,10 +245,17 @@ export default function YouTubeDownloaderPage(props: YouTubeDownloaderPageProps)
     }
     
     let itag: string | undefined;
+    let url: string;
+    let endpoint: string;
+
     if (selectedDownloadType === 'audioonly') {
       itag = selectedAudioItag;
+      url = currentUrl;
+      endpoint = '/api/youtube/download-audio';
     } else { 
       itag = selectedVideoItag;
+      url = currentUrl;
+      endpoint = '/api/youtube/download-video';
     }
 
     if (!itag) {
@@ -244,12 +264,32 @@ export default function YouTubeDownloaderPage(props: YouTubeDownloaderPageProps)
     }
     
     setIsDownloading(true);
-    console.log(`[YouTubeDownloader] "Download" clicked for: ${contentToUse.title}, Type: ${selectedDownloadType}, ITAG: ${itag}, Audio Format: ${selectedAudioFormat}. Action stubbed.`);
-    toast({
-      title: dictionary?.downloadStubTitle || "Download (Stubbed)",
-      description: `${dictionary?.downloadStubDesc || "Downloading"} "${contentToUse.title}" (${selectedDownloadType}, Quality ITAG: ${itag}). ${dictionary?.featureToImplement || "Feature to be fully implemented."}`,
-    });
-    setTimeout(() => setIsDownloading(false), 2000);
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url, quality: itag }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to start download');
+      }
+
+      const blob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = downloadUrl;
+      a.download = `${contentToUse.title}.${selectedDownloadType === 'audioonly' ? 'mp3' : 'mp4'}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+
+    } catch (error) {
+      toast({ title: "Error", description: (error as Error).message, variant: "destructive" });
+    } finally {
+      setIsDownloading(false);
+    }
   };
 
   const handleDownloadPlaylist = async () => {
@@ -264,12 +304,10 @@ export default function YouTubeDownloaderPage(props: YouTubeDownloaderPageProps)
       }
 
       setIsDownloading(true);
-      console.log(`[YouTubeDownloader] "Download Playlist" clicked for ${selectedItems.length} items. Action stubbed.`);
-      toast({
-        title: dictionary?.playlistDownloadStubTitle || "Playlist Download (Stubbed)",
-        description: `${dictionary?.playlistDownloadStubDesc || "Downloading"} ${selectedItems.length} ${dictionary?.items || "items"}. ${dictionary?.featureToImplement || "Feature to be fully implemented."}`,
-      });
-      setTimeout(() => setIsDownloading(false), 2000 + selectedItems.length * 500); // Simulate longer for more items
+      for (const item of selectedItems) {
+        await handleDownload(item as unknown as VideoInfo);
+      }
+      setIsDownloading(false);
   };
   
   const togglePlaylistItemSelection = (itemId: string) => {
